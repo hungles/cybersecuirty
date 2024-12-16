@@ -1,0 +1,100 @@
+Guía para Configurar una VPN Site-to-Site en FortiGate
+
+1. Configuración de las interfaces WAN y LAN
+
+Configuración de la interfaz WAN:
+
+config system interface
+    edit "portX"                        # Reemplaza "portX" con el puerto WAN correspondiente.
+    set ip 100.100.100.1/30             # IP de ejemplo para la red WAN.
+    set allowaccess ping                # Permitir acceso de diagnóstico.
+end
+
+Configuración de la interfaz LAN:
+
+config system interface
+    edit "portY"                        # Reemplaza "portY" con el puerto LAN correspondiente.
+    set ip 192.168.10.1/24              # Dirección IP de la red LAN.
+    set allowaccess ping                # Permitir acceso de diagnóstico.
+end
+2. Configuración de un servidor DHCP para la LAN
+Configura el servidor DHCP para asignar automáticamente direcciones IP a los dispositivos conectados a la LAN:
+
+
+Copiar código
+config system dhcp server
+    edit 1
+        set default-gateway 192.168.10.1   # Dirección IP del gateway LAN.
+        set netmask 255.255.255.0          # Máscara de red de la LAN.
+        set dns-server1 8.8.8.8            # DNS público (puedes cambiarlo si lo deseas).
+        set interface "portY"              # Puerto LAN configurado previamente.
+        config ip-range
+            edit 1
+                set start-ip 192.168.10.100  # Inicio del rango de direcciones IP.
+                set end-ip 192.168.10.110    # Fin del rango de direcciones IP.
+            next
+        end
+    next
+end
+3. Configuración de la VPN IPsec
+Fase 1 de IKE:
+Define la conexión inicial y los parámetros de autenticación:
+
+
+Copiar código
+config vpn ipsec phase1-interface
+    edit "VPN-SITE-A-TO-B"
+        set interface "portX"                   # Interfaz WAN configurada previamente.
+        set ike-version 1                       # Versión de IKE (en este caso, IKEv1).
+        set peertype any                        # Tipo de par (peer).
+        set remote-gw 192.168.2.1               # Dirección IP WAN del FortiGate remoto.
+        set psksecret "clavePSK"                # Clave precompartida para autenticación.
+        set proposal aes256-sha256              # Métodos de cifrado y autenticación.
+        set dhgrp 14                            # Grupo Diffie-Hellman.
+    next
+end
+Fase 2 de IKE:
+Configura los parámetros del túnel para las redes locales y remotas:
+
+
+Copiar código
+config vpn ipsec phase2-interface
+    edit "VPN-SITE-A-TO-B-PHASE2"
+        set phase1name "VPN-SITE-A-TO-B"        # Vincular con la Fase 1 configurada.
+        set proposal aes256-sha256              # Protocolos de cifrado y autenticación.
+        set dhgrp 14                            # Grupo Diffie-Hellman.
+        set src-subnet 192.168.10.0 255.255.255.0  # Red local de FortiGate A.
+        set dst-subnet 192.168.20.0 255.255.255.0  # Red remota de FortiGate B.
+    next
+end
+4. Configuración de políticas de firewall
+Permitir tráfico a través del túnel VPN en ambas direcciones.
+
+Política de salida (LAN a VPN):
+
+Copiar código
+config firewall policy
+    edit 1
+        set name "VPN-To-B"
+        set srcintf "portY"                    # Interfaz LAN.
+        set dstintf "VPN-SITE-A-TO-B"          # Túnel VPN.
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept                      # Permitir tráfico.
+        set schedule "always"
+        set service "ALL"                      # Permitir todos los servicios.
+    next
+Política de entrada (VPN a LAN):
+
+Copiar código
+    edit 2
+        set name "VPN-From-B"
+        set srcintf "VPN-SITE-A-TO-B"          # Túnel VPN.
+        set dstintf "portY"                    # Interfaz LAN.
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept                      # Permitir tráfico.
+        set schedule "always"
+        set service "ALL"                      # Permitir todos los servicios.
+    next
+end
